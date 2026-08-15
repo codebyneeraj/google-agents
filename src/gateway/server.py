@@ -117,4 +117,8 @@ async def handle_analyst_query(payload: AnalystQuery):
     log_audit_event("GATEWAY", "ANALYST_QUERY_RECEIVED", "ACCEPTED", trace_id=trace_id, details={"query": payload.query})
 
     result = soc_agent.process_alert_or_query(payload.query, session_id=payload.session_id, trace_id=trace_id)
+    print(f"\n>>> [INVESTIGATION RESOLVED] Trace ID: {trace_id[:8]} | Actions: {len(result.actions_taken)} | Status: {result.status}")
+    for act in result.actions_taken:
+        print(f"    * {act.get('tool')}: {act.get('input')} -> {act.get('result', {}).get('status', 'SUCCESS')}")
     return result
+

@@ -78,13 +78,22 @@ class LiveSecuritySensor:
                 res = client.post(self.gateway_url, json=payload)
                 if res.status_code == 200:
                     data = res.json()
-                    print(f"[SUCCESS] SOC Agent Response (Status: {data.get('status')}):")
-                    print(f"Summary: {data.get('summary')}")
-                    print(f"Actions Taken: {len(data.get('actions_taken', []))}\n")
+                    print(f"\n[+] SOC AGENT TRIAGE COMPLETED (Status: {data.get('status')})")
+                    print(f"[*] Trace ID: {data.get('trace_id')}")
+                    print(f"[*] Defensive Actions Taken: {len(data.get('actions_taken', []))}")
+                    for act in data.get("actions_taken", []):
+                        print(f"    - Tool: {act.get('tool')} -> Target: {act.get('input')} -> Status: {act.get('result', {}).get('status', 'SUCCESS')}")
+                    
+                    report = data.get("raw_response", "")
+                    if report:
+                        print("\n" + "-"*60)
+                        print(report)
+                        print("-"*60 + "\n")
                 else:
                     print(f"[WARN] Gateway returned error HTTP {res.status_code}: {res.text}\n")
         except Exception as e:
             print(f"[ERROR] Could not contact SOC Agent Gateway: {str(e)}\n")
+
 
     def run_file_tail(self, filepath: str):
         print(f"[*] Starting Security Sensor on {self.hostname}. Monitoring {filepath}...")
