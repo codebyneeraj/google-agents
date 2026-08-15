@@ -274,7 +274,7 @@ def lookup_user_activity(user_identifier: str, trace_id: str = None) -> Dict[str
     return res
 
 def _execute_native_linux_block(target: str) -> Dict[str, Any]:
-    """Applies real firewall drop rule on Linux using ufw or iptables."""
+    """Applies real firewall drop rule on Linux using direct iptables and ufw."""
     firewall_action = "NONE"
     output = ""
     success = False
@@ -282,16 +282,8 @@ def _execute_native_linux_block(target: str) -> Dict[str, Any]:
     # Check if target is an IP address
     is_ip = bool(re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", target))
     
-    if shutil.which("ufw"):
-        try:
-            cmd = ["sudo", "ufw", "insert", "1", "deny", "from", target, "to", "any"] if is_ip else ["sudo", "ufw", "deny", target]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            output = proc.stdout.strip() or proc.stderr.strip()
-            success = (proc.returncode == 0)
-            firewall_action = "UFW_RULE_INSERTED"
-        except Exception as e:
-            output = f"ufw error: {str(e)}"
-    elif shutil.which("iptables") and is_ip:
+    # 1. Direct iptables kernel rule (always works instantly on all Linux distros)
+    if shutil.which("iptables") and is_ip:
         try:
             cmd = ["sudo", "iptables", "-I", "INPUT", "-s", target, "-j", "DROP"]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
@@ -300,8 +292,22 @@ def _execute_native_linux_block(target: str) -> Dict[str, Any]:
             firewall_action = "IPTABLES_RULE_INSERTED"
         except Exception as e:
             output = f"iptables error: {str(e)}"
+
+    # 2. Also register in UFW if present
+    if shutil.which("ufw"):
+        try:
+            cmd = ["sudo", "ufw", "insert", "1", "deny", "from", target, "to", "any"] if is_ip else ["sudo", "ufw", "deny", target]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if not success:
+                success = (proc.returncode == 0)
+                firewall_action = "UFW_RULE_INSERTED"
+                output = proc.stdout.strip() or proc.stderr.strip()
+        except Exception as e:
+            if not output:
+                output = f"ufw error: {str(e)}"
             
     return {"firewall_engine": firewall_action, "success": success, "system_output": output}
+
 
 def isolate_host(host_id: str, reason: str, trace_id: str = None) -> Dict[str, Any]:
     """Executes network quarantine isolation on a compromised enterprise host or attacker IP."""
