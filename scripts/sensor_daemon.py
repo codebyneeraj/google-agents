@@ -74,7 +74,7 @@ class LiveSecuritySensor:
         }
         
         try:
-            with httpx.Client(timeout=10.0) as client:
+            with httpx.Client(timeout=60.0) as client:
                 res = client.post(self.gateway_url, json=payload)
                 if res.status_code == 200:
                     data = res.json()
