@@ -35,6 +35,20 @@ class BaseMemoryService:
     ) -> List[MemoryEntry]:
         raise NotImplementedError
 
+    def search_memory(
+        self,
+        query: str,
+        user_id: Optional[str] = None,
+        limit: int = 5,
+        trace_id: Optional[str] = None,
+    ) -> List[MemoryEntry]:
+        """Managed GEAP Memory Bank search query API."""
+        return self.recall_memories(query=query, limit=limit, user_id=user_id, trace_id=trace_id)
+
+    def get_all_memories_for_cli(self, user_id: Optional[str] = None) -> List[MemoryEntry]:
+        """Fetches all memories scoped to the user/analyst for display in the CLI."""
+        raise NotImplementedError
+
     def generate_memories_callback(self, session_context: Dict[str, Any], trace_id: Optional[str] = None) -> List[MemoryEntry]:
         """Lifecycle callback to automatically extract and persist context at interaction completion."""
         raise NotImplementedError
@@ -109,6 +123,16 @@ class InMemoryMemoryService(BaseMemoryService):
         )
         return list(sorted_results)
 
+    def get_all_memories_for_cli(self, user_id: Optional[str] = None) -> List[MemoryEntry]:
+        """Fetches all memories scoped to the user/analyst for display in the CLI."""
+        uid = user_id or config.default_user_id
+        all_entries = []
+        for entries in self._store.values():
+            for entry in entries:
+                if entry.user_id == uid:
+                    all_entries.append(entry)
+        return sorted(all_entries, key=lambda x: x.created_at, reverse=True)
+
     def generate_memories_callback(self, session_context: Dict[str, Any], trace_id: Optional[str] = None) -> List[MemoryEntry]:
         """Automatically parses session context and commits structured memories."""
         created_memories = []
@@ -161,6 +185,9 @@ class VertexAiMemoryBankService(BaseMemoryService):
         trace_id: Optional[str] = None,
     ) -> List[MemoryEntry]:
         return self._fallback_store.recall_memories(query, limit, user_id, trace_id)
+
+    def get_all_memories_for_cli(self, user_id: Optional[str] = None) -> List[MemoryEntry]:
+        return self._fallback_store.get_all_memories_for_cli(user_id)
 
     def generate_memories_callback(self, session_context: Dict[str, Any], trace_id: Optional[str] = None) -> List[MemoryEntry]:
         return self._fallback_store.generate_memories_callback(session_context, trace_id)

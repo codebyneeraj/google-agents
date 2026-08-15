@@ -56,16 +56,16 @@ def run_interactive_soc():
 
             if user_input.lower() == "memory":
                 from src.memory.memory_service import memory_bank
-                entries = []
-                for k, v in memory_bank._store.items():
-                    entries.extend(v)
+                with console.status("[bold #00ff9d]Querying Vertex AI Memory Bank for retained enterprise context...[/]"):
+                    entries = memory_bank.get_all_memories_for_cli()
+                
                 if not entries:
-                    console.print("[dim #f6ad55]Memory Bank is currently empty. Run a triage query or 'demo' first.[/]\n")
+                    console.print("[dim #f6ad55]Memory Bank is currently empty. Run an alert triage query or 'demo' first.[/]\n")
                 else:
-                    mem_table = Table(title="Enterprise Memory Bank - Retained Contexts", border_style="#4a5568", header_style="bold #00ff9d")
+                    mem_table = Table(title="Vertex AI Memory Bank - Enterprise Contexts", border_style="#4a5568", header_style="bold #00ff9d")
                     mem_table.add_column("Entity Key", style="#63b3ed")
                     mem_table.add_column("Memory Summary", style="#e2e8f0")
-                    mem_table.add_column("Timestamp", style="#a0aec0")
+                    mem_table.add_column("Timestamp (UTC)", style="#a0aec0")
                     for e in entries:
                         mem_table.add_row(e.entity_key, e.summary, e.created_at[:19])
                     console.print(mem_table)
