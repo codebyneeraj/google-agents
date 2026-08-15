@@ -152,13 +152,21 @@ Rules:
                 temperature=0.2,
             )
 
-            chat = self.client.chats.create(model=config.default_model, config=gen_config)
-            response = chat.send_message(prompt)
+            # Generate content with tools
+            response = self.client.models.generate_content(
+                model=config.default_model,
+                contents=prompt,
+                config=gen_config,
+            )
 
-            return response.text or "Investigation completed by Gemini."
+            if response.text:
+                return response.text
+            return "Investigation reasoning processed by Gemini 2.5."
         except Exception as e:
+            print(f"\n[!] WARNING: Gemini API Call failed ({type(e).__name__}: {str(e)}). Falling back to local engine.")
             log_audit_event("AGENT_REASONING", "GEMINI_CALL_FAILED", "FALLBACK_TRIGGERED", trace_id=trace_id, details={"error": str(e)}, severity=30)
             return self._execute_deterministic_soc_workflow(prompt, memory_context, actions_taken, [], [], trace_id)
+
 
     def _execute_deterministic_soc_workflow(
         self,

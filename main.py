@@ -15,8 +15,12 @@ def display_banner():
     banner_text = Text()
     banner_text.append("SECURE SOC ANALYST ORCHESTRATOR\n", style="bold #00ff9d")
     banner_text.append("Gemini Enterprise Agent Platform | Fortified Enterprise Fleet\n", style="dim #a0aec0")
-    banner_text.append(f"Model: {config.default_model} | Guardrails: Model Armor ACTIVE | Runtime: Cloud Run Ready", style="#f6ad55")
+    engine_status = f"Gemini 2.5 Brain: ONLINE ({config.default_model})" if soc_agent.client else "Gemini Brain: OFFLINE (Running local deterministic engine - add GEMINI_API_KEY to .env to activate)"
+    engine_color = "#00ff9d" if soc_agent.client else "#feb2b2"
+    banner_text.append(f"{engine_status}\n", style=engine_color)
+    banner_text.append("Guardrails: Model Armor ACTIVE | Memory: Vertex AI Memory Bank ACTIVE", style="#f6ad55")
     console.print(Panel(banner_text, border_style="#4a5568", title="[bold #e2e8f0]Enterprise Security Operations Center[/]", subtitle="[dim #718096]v1.0.0[/]"))
+
 
 def run_interactive_soc():
     display_banner()
