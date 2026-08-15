@@ -39,35 +39,51 @@ class ModelArmor:
         self._compiled_injection = [re.compile(p) for p in self.INJECTION_PATTERNS]
         self._compiled_pii = {k: re.compile(p, re.IGNORECASE) for k, p in self.PII_PATTERNS.items()}
 
-    def inspect_inbound(self, prompt: str, trace_id: str = None) -> Tuple[bool, str, List[str]]:
-        """Inspects inbound user or webhook input for prompt injection and malicious instructions.
-        Returns: (is_safe, sanitized_prompt, detected_threats)
-        """
+    def evaluate_input_safety(self, prompt: str, trace_id: str = None) -> Dict[str, Any]:
+        """Comprehensive inbound security evaluation returning risk score and matched heuristics."""
         threats_found = []
+        threat_score = 0
+
         for pattern in self._compiled_injection:
             matches = pattern.findall(prompt)
             if matches:
                 threats_found.append(pattern.pattern)
+                threat_score += 45  # Each matched injection pattern increases severity score
 
-        if threats_found:
+        threat_score = min(threat_score, 100)
+        is_safe = (threat_score < 40)
+
+        if not is_safe:
             log_audit_event(
                 event_type="MODEL_ARMOR_INBOUND",
                 action="PROMPT_INJECTION_DETECTED",
                 status="BLOCKED",
                 trace_id=trace_id,
-                details={"threat_patterns": threats_found, "sample_input": prompt[:120]},
-                severity=40, # ERROR / WARNING
+                details={"threat_score": threat_score, "threat_patterns": threats_found, "sample_input": prompt[:120]},
+                severity=40,
             )
-            return False, prompt, threats_found
+        else:
+            log_audit_event(
+                event_type="MODEL_ARMOR_INBOUND",
+                action="INPUT_VALIDATION",
+                status="PASSED",
+                trace_id=trace_id,
+                details={"threat_score": threat_score, "input_length": len(prompt)},
+            )
 
-        log_audit_event(
-            event_type="MODEL_ARMOR_INBOUND",
-            action="INPUT_VALIDATION",
-            status="PASSED",
-            trace_id=trace_id,
-            details={"input_length": len(prompt)},
-        )
-        return True, prompt, []
+        return {
+            "is_safe": is_safe,
+            "threat_score": threat_score,
+            "threats": threats_found,
+            "sanitized_prompt": prompt,
+        }
+
+    def inspect_inbound(self, prompt: str, trace_id: str = None) -> Tuple[bool, str, List[str]]:
+        """Inspects inbound user or webhook input for prompt injection and malicious instructions.
+        Returns: (is_safe, sanitized_prompt, detected_threats)
+        """
+        eval_res = self.evaluate_input_safety(prompt, trace_id=trace_id)
+        return eval_res["is_safe"], eval_res["sanitized_prompt"], eval_res["threats"]
 
     def sanitize_outbound(self, text: str, trace_id: str = None) -> Tuple[str, Dict[str, int]]:
         """Sanitizes model outputs by redacting PII, tokens, and credentials.

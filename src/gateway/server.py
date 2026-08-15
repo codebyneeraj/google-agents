@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Request
+import time
+from collections import defaultdict
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -15,6 +17,36 @@ app = FastAPI(
     version=config.app_version,
     description="Enterprise Agent Gateway for Autonomous SOC Incident Triaging and Threat Response (GEAP Fleet)",
 )
+
+# Sliding Window Rate Limiter (Enterprise Security Requirement)
+RATE_LIMIT_WINDOW_SECONDS = 60
+MAX_REQUESTS_PER_WINDOW = 120
+request_records = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limiting_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    
+    # Filter timestamps within window
+    timestamps = [t for t in request_records[client_ip] if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    timestamps.append(now)
+    request_records[client_ip] = timestamps
+    
+    if len(timestamps) > MAX_REQUESTS_PER_WINDOW:
+        log_audit_event(
+            event_type="GATEWAY_RATE_LIMIT",
+            action="REQUEST_THROTTLED",
+            status="RATE_LIMIT_EXCEEDED",
+            details={"client_ip": client_ip, "request_count": len(timestamps)},
+            severity=30
+        )
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Enterprise Gateway: Rate limit exceeded. Please retry shortly."}
+        )
+        
+    return await call_next(request)
 
 class AlertPayload(BaseModel):
     alert_id: str = Field(default_factory=lambda: f"alert_{uuid.uuid4().hex[:6]}")
