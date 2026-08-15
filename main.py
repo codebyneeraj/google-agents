@@ -115,4 +115,10 @@ def run_interactive_soc():
             break
 
 if __name__ == "__main__":
-    run_interactive_soc()
+    if "--gateway" in sys.argv:
+        import uvicorn
+        port = int(config.port) if hasattr(config, "port") else 8080
+        console.print(f"[bold #00ff9d]Starting Enterprise SOC Agent Gateway on 0.0.0.0:{port}...[/]")
+        uvicorn.run("src.gateway.server:app", host="0.0.0.0", port=port, reload=False)
+    else:
+        run_interactive_soc()

@@ -30,5 +30,7 @@ class AppConfig(BaseModel):
     virustotal_api_key: str = Field(default_factory=lambda: os.getenv("VIRUSTOTAL_API_KEY", ""))
     enable_live_firewall: bool = Field(default_factory=lambda: os.getenv("ENABLE_LIVE_FIREWALL", "false").lower() == "true")
     auth_log_path: str = Field(default_factory=lambda: os.getenv("AUTH_LOG_PATH", "/var/log/auth.log"))
+    # Application Runtime
+    port: int = Field(default_factory=lambda: int(os.getenv("PORT", "8080")))
 
 config = AppConfig()
