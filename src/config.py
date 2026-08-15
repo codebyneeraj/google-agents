@@ -25,4 +25,10 @@ class AppConfig(BaseModel):
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     enable_model_armor: bool = Field(default_factory=lambda: os.getenv("ENABLE_MODEL_ARMOR", "true").lower() == "true")
 
+    # Live VM & Threat Intel Integration
+    abuseipdb_api_key: str = Field(default_factory=lambda: os.getenv("ABUSEIPDB_API_KEY", ""))
+    virustotal_api_key: str = Field(default_factory=lambda: os.getenv("VIRUSTOTAL_API_KEY", ""))
+    enable_live_firewall: bool = Field(default_factory=lambda: os.getenv("ENABLE_LIVE_FIREWALL", "false").lower() == "true")
+    auth_log_path: str = Field(default_factory=lambda: os.getenv("AUTH_LOG_PATH", "/var/log/auth.log"))
+
 config = AppConfig()

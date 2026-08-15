@@ -7,7 +7,14 @@ from src.config import config
 from src.security.model_armor import model_armor, GuardrailViolation
 from src.memory.memory_service import memory_bank, MemoryEntry
 from src.memory.session_service import session_service
-from src.tools.soc_tools import check_threat_intel, lookup_user_activity, isolate_host, get_soc_tool_declarations, get_and_clear_tool_executions
+from src.tools.soc_tools import (
+    check_threat_intel,
+    lookup_user_activity,
+    isolate_host,
+    inspect_linux_auth_logs,
+    get_soc_tool_declarations,
+    get_and_clear_tool_executions,
+)
 from src.observability.logger import log_audit_event
 
 class InvestigationResult(BaseModel):
@@ -138,7 +145,7 @@ Rules:
 
             system_instruction = f"{self.SYSTEM_PROMPT}\n{memory_context}" if memory_context else self.SYSTEM_PROMPT
 
-            tools = [check_threat_intel, lookup_user_activity, isolate_host]
+            tools = [check_threat_intel, lookup_user_activity, isolate_host, inspect_linux_auth_logs]
             gen_config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 tools=tools,
@@ -207,6 +214,13 @@ Rules:
                 elif intel.get("reputation") == "SUSPICIOUS":
                     findings.append(f"Suspicious IP detected: {w} (Score: {intel.get('threat_score')})")
 
+                # Check local Linux authentication logs if relevant
+                if "ssh" in lower_prompt or "brute" in lower_prompt or "login" in lower_prompt or "auth" in lower_prompt:
+                    auth_log_res = inspect_linux_auth_logs(w, trace_id=trace_id)
+                    actions_taken.append({"tool": "inspect_linux_auth_logs", "input": w, "result": auth_log_res})
+                    if auth_log_res.get("failed_attempts", 0) > 0:
+                        findings.append(f"Linux Auth Telemetry: {auth_log_res.get('failed_attempts')} failed authentication attempts from {w}.")
+
             if "@" in w and "." in w and w not in checked_users:
                 checked_users.append(w)
                 user_logs = lookup_user_activity(w, trace_id=trace_id)
@@ -220,6 +234,12 @@ Rules:
             iso_res = isolate_host("WKSTN-JDOE-04", reason="Automated containment following high-risk threat actor activity", trace_id=trace_id)
             actions_taken.append({"tool": "isolate_host", "input": "WKSTN-JDOE-04", "result": iso_res})
             findings.append("Endpoint WKSTN-JDOE-04 successfully quarantined via EDR integration.")
+        elif any(a.get("tool") == "inspect_linux_auth_logs" and a.get("result", {}).get("failed_attempts", 0) >= 5 for a in actions_taken):
+            for ip in checked_ips:
+                iso_ip_res = isolate_host(ip, reason="Automated firewall containment following detected SSH brute force threshold breach", trace_id=trace_id)
+                actions_taken.append({"tool": "isolate_host", "input": ip, "result": iso_ip_res})
+                findings.append(f"Attacker IP {ip} successfully blocked by Linux firewall.")
+
 
         # Construct report body
         if memory_context:

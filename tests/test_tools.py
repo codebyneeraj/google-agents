@@ -25,3 +25,16 @@ def test_isolate_host():
     result = isolate_host("SRV-FINANCE-01", reason="Malware containment")
     assert result["status"] == "SUCCESS"
     assert result["action"] == "QUARANTINED"
+
+def test_isolate_ip_address():
+    result = isolate_host("203.0.113.50", reason="Live brute-force attack containment")
+    assert result["status"] == "SUCCESS"
+    assert result["action"] == "IP_FIREWALL_BLOCK"
+    assert result["target_ip"] == "203.0.113.50"
+
+def test_inspect_linux_auth_logs():
+    from src.tools.soc_tools import inspect_linux_auth_logs
+    result = inspect_linux_auth_logs(ip_address="192.168.1.100")
+    assert "failed_attempts" in result
+    assert "risk_level" in result
+    assert "log_source" in result

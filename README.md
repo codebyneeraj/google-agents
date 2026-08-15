@@ -108,7 +108,43 @@ uvicorn src.gateway.server:app --reload --port 8080
 
 ---
 
+## 🛡️ Live Linux VM Security Lab (Windows Attacker -> Linux Defender)
+
+Test real intrusion detection and automated firewall containment using a Linux VM (Ubuntu / Debian / RHEL):
+
+### Step 1: Install on Linux Virtual Machine
+On your Linux VM, clone this repository and run the automated installer:
+```bash
+chmod +x install_vm.sh
+./install_vm.sh
+```
+
+### Step 2: Start the Defender Services on Linux VM
+```bash
+# Terminal 1: Start Agent Gateway
+source .venv/bin/activate
+python main.py --gateway
+
+# Terminal 2: Start the Live Auth Log Sensor Daemon
+source .venv/bin/activate
+sudo python scripts/sensor_daemon.py
+```
+
+### Step 3: Run the Attack Simulation from Windows Host
+From your Windows host machine, launch simulated SSH brute force against the Linux VM:
+```powershell
+# Python
+python scripts/attack_simulation.py --target-ip <LINUX_VM_IP>
+
+# Or native PowerShell:
+.\scripts\attack_simulation.ps1 -TargetIp <LINUX_VM_IP>
+```
+The sensor daemon detects the failed login attempts in `/var/log/auth.log`, alerts the SOC Agent, and the agent automatically executes `ufw`/`iptables` firewall rules to block your Windows IP.
+
+---
+
 ## ☁️ Google Cloud Deployment
+
 
 ### 1. Deploy to Google Cloud Run (Agent Runtime)
 ```bash
