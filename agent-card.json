@@ -1,0 +1,32 @@
+{
+  "name": "Secure SOC Analyst Orchestrator",
+  "description": "An autonomous, event-driven AI agent that monitors enterprise SIEM alerts, investigates suspicious activity using threat intelligence, and generates sanitized incident reports using GEAP Memory Bank.",
+  "url": "https://soc-orchestrator-enterprise-fleet-uc.a.run.app/api/v1/agent",
+  "version": "1.0.0",
+  "provider": {
+    "organization": "Enterprise Security Operations",
+    "url": "https://github.com/codebyneeraj/google-agents"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": true
+  },
+  "skills": [
+    {
+      "id": "triage-siem-alert",
+      "name": "Triage SIEM Alert",
+      "description": "Analyzes IP addresses and user accounts against threat intelligence and IAM logs."
+    },
+    {
+      "id": "generate-incident-report",
+      "name": "Generate Incident Report",
+      "description": "Synthesizes findings into a sanitized report with PII redaction and MITRE ATT&CK mapping."
+    },
+    {
+      "id": "isolate-compromised-host",
+      "name": "Isolate Compromised Host",
+      "description": "Executes EDR network quarantine containment on compromised endpoint assets."
+    }
+  ]
+}
