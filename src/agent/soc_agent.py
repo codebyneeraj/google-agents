@@ -47,20 +47,25 @@ Rules:
         self._init_client()
 
     def _init_client(self):
-        if config.gemini_api_key or config.enterprise_mode:
+        import warnings
+        warnings.filterwarnings("ignore", category=UserWarning, module="google.genai")
+        if config.gemini_api_key:
             try:
                 from google import genai
-                if config.enterprise_mode:
-                    self.client = genai.Client(
-                        vertexai=True,
-                        project=config.gcp_project,
-                        location=config.gcp_location
-                    )
-                else:
-                    self.client = genai.Client(
-                        api_key=config.gemini_api_key,
-                        vertexai=False
-                    )
+                self.client = genai.Client(
+                    api_key=config.gemini_api_key,
+                    vertexai=False
+                )
+            except Exception as e:
+                log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
+        elif config.enterprise_mode:
+            try:
+                from google import genai
+                self.client = genai.Client(
+                    vertexai=True,
+                    project=config.gcp_project,
+                    location=config.gcp_location
+                )
             except Exception as e:
                 log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
 
