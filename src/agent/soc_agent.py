@@ -91,14 +91,26 @@ Rules:
                 [f"[{m.created_at}] Entity: {m.entity_key} -> {m.summary}" for m in recalled_memories]
             ) + "\n----------------------------------\n"
 
-        # 3. Autonomous Execution & Tool Invocation
+        # 3. Autonomous Execution & Tool Invocation with Session History
         findings = []
         mitre_tactics = []
 
+        # Retrieve prior turns from this active session for conversational continuity
+        session_obj = session_service.get_session(sid, trace_id=tid)
+        history_contents = []
+        if session_obj and session_obj.messages:
+            try:
+                from google.genai import types
+                for msg in session_obj.messages[-10:]:
+                    role = "user" if msg.role == "user" else "model"
+                    history_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
+            except Exception:
+                pass
+
         if self.client:
-            raw_output = self._execute_gemini(sanitized_input, memory_context, [], tid)
+            raw_output = self._execute_gemini(sanitized_input, memory_context, history_contents, tid, session_obj)
         else:
-            raw_output = self._execute_deterministic_soc_workflow(sanitized_input, memory_context, [], findings, mitre_tactics, tid)
+            raw_output = self._execute_deterministic_soc_workflow(sanitized_input, memory_context, [], findings, mitre_tactics, tid, session_obj)
 
         # Retrieve any tool executions performed during reasoning
         actions_taken = get_and_clear_tool_executions()
@@ -148,8 +160,8 @@ Rules:
             raw_response=sanitized_output,
         )
 
-    def _execute_gemini(self, prompt: str, memory_context: str, actions_taken: List[Dict[str, Any]], trace_id: str) -> str:
-        """Executes reasoning loop with Gemini API Client with native function calling."""
+    def _execute_gemini(self, prompt: str, memory_context: str, history: List[Any], trace_id: str, session_obj: Any = None) -> str:
+        """Executes reasoning loop with Gemini API Client with native function calling & multi-turn history."""
         try:
             from google.genai import types
 
@@ -162,10 +174,11 @@ Rules:
                 temperature=0.2,
             )
 
-            # Generate content with tools using recommended Chat AFC pattern
+            # Generate content with tools using recommended Chat AFC pattern & session history
             chat = self.client.chats.create(
                 model=config.default_model,
                 config=gen_config,
+                history=history if history else None,
             )
             response = chat.send_message(prompt)
 
@@ -175,7 +188,7 @@ Rules:
         except Exception as e:
             print(f"\n[!] WARNING: Gemini API Call failed ({type(e).__name__}: {str(e)}). Falling back to local engine.")
             log_audit_event("AGENT_REASONING", "GEMINI_CALL_FAILED", "FALLBACK_TRIGGERED", trace_id=trace_id, details={"error": str(e)}, severity=30)
-            return self._execute_deterministic_soc_workflow(prompt, memory_context, actions_taken, [], [], trace_id)
+            return self._execute_deterministic_soc_workflow(prompt, memory_context, [], [], [], trace_id, session_obj)
 
 
     def _execute_deterministic_soc_workflow(
@@ -185,7 +198,8 @@ Rules:
         actions_taken: List[Dict[str, Any]],
         findings: List[str],
         mitre_tactics: List[str],
-        trace_id: str
+        trace_id: str,
+        session_obj: Any = None
     ) -> str:
         """Deterministic SOC investigation loop when operating in autonomous test mode."""
         lines = [
@@ -196,8 +210,18 @@ Rules:
             "## 1. Automated Telemetry Corroboration"
         ]
 
-        # Check for conversational greeting / intro
         lower_prompt = prompt.strip().lower()
+
+        # Check for multi-turn conversational queries (e.g., 'what did I ask earlier')
+        if any(kw in lower_prompt for kw in ("what did i ask", "what i asked", "previous question", "earlier", "chat history")):
+            if session_obj and session_obj.messages:
+                user_turns = [m.content for m in session_obj.messages if m.role == "user"]
+                if user_turns:
+                    recent = "\n".join([f"{i+1}. {q}" for i, q in enumerate(user_turns[-5:])])
+                    return f"# SESSION CONVERSATION HISTORY\n**Session ID:** `{session_obj.session_id}`\n\nEarlier in this session, you asked:\n{recent}"
+            return "No previous questions recorded in the current active session yet."
+
+        # Check for conversational greeting / intro
         if lower_prompt in ("hi", "hello", "hey", "who are you", "what can you do", "status"):
             findings.append("Operational: Standing by for SIEM alerts, indicator lookups, and mitigation tasks.")
             return (
