@@ -15,7 +15,7 @@ flowchart TD
     B --> C{Model Armor Inbound}
     C -- "Injection Detected" --> D[Block & Emit Security Audit Log]
     C -- "Passed Validation" --> E[GEAP Memory Bank Recall]
-    E --> F[Gemini 2.5 Autonomous Orchestrator]
+    E --> F[Autonomous SOC Orchestrator]
     F --> G[SOC Tools: Threat Intel / IAM / EDR]
     G --> F
     F --> H[Memory Bank Callback: Auto-Store Context]

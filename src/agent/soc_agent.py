@@ -1,10 +1,9 @@
-import os
 import uuid
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 
 from src.config import config
-from src.security.model_armor import model_armor, GuardrailViolation
+from src.security.model_armor import model_armor
 from src.memory.memory_service import memory_bank, MemoryEntry
 from src.memory.session_service import session_service
 from src.tools.soc_tools import (
@@ -12,7 +11,6 @@ from src.tools.soc_tools import (
     lookup_user_activity,
     isolate_host,
     inspect_linux_auth_logs,
-    get_soc_tool_declarations,
     get_and_clear_tool_executions,
 )
 from src.observability.logger import log_audit_event
