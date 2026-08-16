@@ -15,7 +15,7 @@ flowchart TD
     B --> C{Model Armor Inbound}
     C -- "Injection Detected" --> D[Block & Emit Security Audit Log]
     C -- "Passed Validation" --> E[GEAP Memory Bank Recall]
-    E --> F[Gemini 2.5 Autonomous Orchestrator]
+    E --> F[Autonomous SOC Orchestrator]
     F --> G[SOC Tools: Threat Intel / IAM / EDR]
     G --> F
     F --> H[Memory Bank Callback: Auto-Store Context]
@@ -48,7 +48,7 @@ flowchart TD
 
 | GEAP / GCP Component | Implementation in This Project | Purpose |
 | :--- | :--- | :--- |
-| **Gemini API** | `gemini-2.5-flash` / `gemini-1.5-flash` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
+| **Gemini / Gemma API** | `gemma-4-31b-it` / `gemini-2.5-flash` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
 | **Google ADK & GenAI SDK** | `google-genai` Python SDK | Official agent framework for managing tools, callbacks, and orchestration. |
 | **Agent Registry** | `agent-card.json` & `/api/v1/agent/registry` | Central fleet catalog for capability discovery and IAM contract verification. |
 | **Agent Runtime** | Google Cloud Run (`Dockerfile`, `cloudbuild.yaml`) | Serverless, scalable container execution runtime. |
@@ -108,7 +108,43 @@ uvicorn src.gateway.server:app --reload --port 8080
 
 ---
 
+## 🛡️ Live Linux VM Security Lab (Windows Attacker -> Linux Defender)
+
+Test real intrusion detection and automated firewall containment using a Linux VM (Ubuntu / Debian / RHEL):
+
+### Step 1: Install on Linux Virtual Machine
+On your Linux VM, clone this repository and run the automated installer:
+```bash
+chmod +x install_vm.sh
+./install_vm.sh
+```
+
+### Step 2: Start the Defender Services on Linux VM
+```bash
+# Terminal 1: Start Agent Gateway
+source .venv/bin/activate
+python main.py --gateway
+
+# Terminal 2: Start the Live Auth Log Sensor Daemon
+source .venv/bin/activate
+sudo python scripts/sensor_daemon.py
+```
+
+### Step 3: Run the Attack Simulation from Windows Host
+From your Windows host machine, launch simulated SSH brute force against the Linux VM:
+```powershell
+# Python
+python scripts/attack_simulation.py --target-ip <LINUX_VM_IP>
+
+# Or native PowerShell:
+.\scripts\attack_simulation.ps1 -TargetIp <LINUX_VM_IP>
+```
+The sensor daemon detects the failed login attempts in `/var/log/auth.log`, alerts the SOC Agent, and the agent automatically executes `ufw`/`iptables` firewall rules to block your Windows IP.
+
+---
+
 ## ☁️ Google Cloud Deployment
+
 
 ### 1. Deploy to Google Cloud Run (Agent Runtime)
 ```bash

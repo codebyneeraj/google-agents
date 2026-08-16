@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -28,10 +29,25 @@ class StructuredJsonFormatter(logging.Formatter):
 def setup_logger(name: str = "soc_orchestrator", level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
+    
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(StructuredJsonFormatter())
-        logger.addHandler(handler)
+        formatter = StructuredJsonFormatter()
+        
+        # Ensure logs directory exists
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "soc_audit.log")
+        
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
+        # Stream to stdout only when explicitly enabled (e.g. Cloud Run containers)
+        if os.getenv("LOG_TO_STDOUT", "false").lower() == "true":
+            stream_handler = logging.StreamHandler(sys.stdout)
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+            
     logger.propagate = False
     return logger
 

@@ -1,13 +1,18 @@
-import os
 import uuid
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 
 from src.config import config
-from src.security.model_armor import model_armor, GuardrailViolation
+from src.security.model_armor import model_armor
 from src.memory.memory_service import memory_bank, MemoryEntry
 from src.memory.session_service import session_service
-from src.tools.soc_tools import check_threat_intel, lookup_user_activity, isolate_host, get_soc_tool_declarations, get_and_clear_tool_executions
+from src.tools.soc_tools import (
+    check_threat_intel,
+    lookup_user_activity,
+    isolate_host,
+    inspect_linux_auth_logs,
+    get_and_clear_tool_executions,
+)
 from src.observability.logger import log_audit_event
 
 class InvestigationResult(BaseModel):
@@ -40,10 +45,20 @@ Rules:
         self._init_client()
 
     def _init_client(self):
-        if config.gemini_api_key:
+        if config.gemini_api_key or config.enterprise_mode:
             try:
                 from google import genai
-                self.client = genai.Client(api_key=config.gemini_api_key)
+                if config.enterprise_mode:
+                    self.client = genai.Client(
+                        vertexai=True,
+                        project=config.gcp_project,
+                        location=config.gcp_location
+                    )
+                else:
+                    self.client = genai.Client(
+                        api_key=config.gemini_api_key,
+                        vertexai=False
+                    )
             except Exception as e:
                 log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
 
@@ -74,14 +89,26 @@ Rules:
                 [f"[{m.created_at}] Entity: {m.entity_key} -> {m.summary}" for m in recalled_memories]
             ) + "\n----------------------------------\n"
 
-        # 3. Autonomous Execution & Tool Invocation
+        # 3. Autonomous Execution & Tool Invocation with Session History
         findings = []
         mitre_tactics = []
 
+        # Retrieve prior turns from this active session for conversational continuity
+        session_obj = session_service.get_session(sid, trace_id=tid)
+        history_contents = []
+        if session_obj and session_obj.messages:
+            try:
+                from google.genai import types
+                for msg in session_obj.messages[-10:]:
+                    role = "user" if msg.role == "user" else "model"
+                    history_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
+            except Exception:
+                pass
+
         if self.client:
-            raw_output = self._execute_gemini(sanitized_input, memory_context, [], tid)
+            raw_output = self._execute_gemini(sanitized_input, memory_context, history_contents, tid, session_obj)
         else:
-            raw_output = self._execute_deterministic_soc_workflow(sanitized_input, memory_context, [], findings, mitre_tactics, tid)
+            raw_output = self._execute_deterministic_soc_workflow(sanitized_input, memory_context, [], findings, mitre_tactics, tid, session_obj)
 
         # Retrieve any tool executions performed during reasoning
         actions_taken = get_and_clear_tool_executions()
@@ -131,27 +158,36 @@ Rules:
             raw_response=sanitized_output,
         )
 
-    def _execute_gemini(self, prompt: str, memory_context: str, actions_taken: List[Dict[str, Any]], trace_id: str) -> str:
-        """Executes reasoning loop with Gemini API Client with native function calling."""
+    def _execute_gemini(self, prompt: str, memory_context: str, history: List[Any], trace_id: str, session_obj: Any = None) -> str:
+        """Executes reasoning loop with Gemini API Client with native function calling & multi-turn history."""
         try:
             from google.genai import types
 
             system_instruction = f"{self.SYSTEM_PROMPT}\n{memory_context}" if memory_context else self.SYSTEM_PROMPT
 
-            tools = [check_threat_intel, lookup_user_activity, isolate_host]
+            tools = [check_threat_intel, lookup_user_activity, isolate_host, inspect_linux_auth_logs]
             gen_config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 tools=tools,
                 temperature=0.2,
             )
 
-            chat = self.client.chats.create(model=config.default_model, config=gen_config)
+            # Generate content with tools using recommended Chat AFC pattern & session history
+            chat = self.client.chats.create(
+                model=config.default_model,
+                config=gen_config,
+                history=history if history else None,
+            )
             response = chat.send_message(prompt)
 
-            return response.text or "Investigation completed by Gemini."
+            if response.text:
+                return response.text
+            return f"Investigation reasoning processed by {config.default_model}."
         except Exception as e:
+            print(f"\n[!] WARNING: Gemini API Call failed ({type(e).__name__}: {str(e)}). Falling back to local engine.")
             log_audit_event("AGENT_REASONING", "GEMINI_CALL_FAILED", "FALLBACK_TRIGGERED", trace_id=trace_id, details={"error": str(e)}, severity=30)
-            return self._execute_deterministic_soc_workflow(prompt, memory_context, actions_taken, [], [], trace_id)
+            return self._execute_deterministic_soc_workflow(prompt, memory_context, [], [], [], trace_id, session_obj)
+
 
     def _execute_deterministic_soc_workflow(
         self,
@@ -160,7 +196,8 @@ Rules:
         actions_taken: List[Dict[str, Any]],
         findings: List[str],
         mitre_tactics: List[str],
-        trace_id: str
+        trace_id: str,
+        session_obj: Any = None
     ) -> str:
         """Deterministic SOC investigation loop when operating in autonomous test mode."""
         lines = [
@@ -171,8 +208,18 @@ Rules:
             "## 1. Automated Telemetry Corroboration"
         ]
 
-        # Check for conversational greeting / intro
         lower_prompt = prompt.strip().lower()
+
+        # Check for multi-turn conversational queries (e.g., 'what did I ask earlier')
+        if any(kw in lower_prompt for kw in ("what did i ask", "what i asked", "previous question", "earlier", "chat history")):
+            if session_obj and session_obj.messages:
+                user_turns = [m.content for m in session_obj.messages if m.role == "user"]
+                if user_turns:
+                    recent = "\n".join([f"{i+1}. {q}" for i, q in enumerate(user_turns[-5:])])
+                    return f"# SESSION CONVERSATION HISTORY\n**Session ID:** `{session_obj.session_id}`\n\nEarlier in this session, you asked:\n{recent}"
+            return "No previous questions recorded in the current active session yet."
+
+        # Check for conversational greeting / intro
         if lower_prompt in ("hi", "hello", "hey", "who are you", "what can you do", "status"):
             findings.append("Operational: Standing by for SIEM alerts, indicator lookups, and mitigation tasks.")
             return (
@@ -207,6 +254,13 @@ Rules:
                 elif intel.get("reputation") == "SUSPICIOUS":
                     findings.append(f"Suspicious IP detected: {w} (Score: {intel.get('threat_score')})")
 
+                # Check local Linux authentication logs if relevant
+                if "ssh" in lower_prompt or "brute" in lower_prompt or "login" in lower_prompt or "auth" in lower_prompt:
+                    auth_log_res = inspect_linux_auth_logs(w, trace_id=trace_id)
+                    actions_taken.append({"tool": "inspect_linux_auth_logs", "input": w, "result": auth_log_res})
+                    if auth_log_res.get("failed_attempts", 0) > 0:
+                        findings.append(f"Linux Auth Telemetry: {auth_log_res.get('failed_attempts')} failed authentication attempts from {w}.")
+
             if "@" in w and "." in w and w not in checked_users:
                 checked_users.append(w)
                 user_logs = lookup_user_activity(w, trace_id=trace_id)
@@ -220,6 +274,12 @@ Rules:
             iso_res = isolate_host("WKSTN-JDOE-04", reason="Automated containment following high-risk threat actor activity", trace_id=trace_id)
             actions_taken.append({"tool": "isolate_host", "input": "WKSTN-JDOE-04", "result": iso_res})
             findings.append("Endpoint WKSTN-JDOE-04 successfully quarantined via EDR integration.")
+        elif any(a.get("tool") == "inspect_linux_auth_logs" and a.get("result", {}).get("failed_attempts", 0) >= 5 for a in actions_taken):
+            for ip in checked_ips:
+                iso_ip_res = isolate_host(ip, reason="Automated firewall containment following detected SSH brute force threshold breach", trace_id=trace_id)
+                actions_taken.append({"tool": "isolate_host", "input": ip, "result": iso_ip_res})
+                findings.append(f"Attacker IP {ip} successfully blocked by Linux firewall.")
+
 
         # Construct report body
         if memory_context:
