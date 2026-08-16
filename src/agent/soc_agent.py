@@ -47,25 +47,20 @@ Rules:
         self._init_client()
 
     def _init_client(self):
-        import warnings
-        warnings.filterwarnings("ignore", category=UserWarning, module="google.genai")
-        if config.gemini_api_key:
+        if config.gemini_api_key or config.enterprise_mode:
             try:
                 from google import genai
-                self.client = genai.Client(
-                    api_key=config.gemini_api_key,
-                    vertexai=False
-                )
-            except Exception as e:
-                log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
-        elif config.enterprise_mode:
-            try:
-                from google import genai
-                self.client = genai.Client(
-                    vertexai=True,
-                    project=config.gcp_project,
-                    location=config.gcp_location
-                )
+                if config.enterprise_mode:
+                    self.client = genai.Client(
+                        vertexai=True,
+                        project=config.gcp_project,
+                        location=config.gcp_location
+                    )
+                else:
+                    self.client = genai.Client(
+                        api_key=config.gemini_api_key,
+                        vertexai=False
+                    )
             except Exception as e:
                 log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
 
@@ -167,12 +162,12 @@ Rules:
                 temperature=0.2,
             )
 
-            # Generate content with tools
-            response = self.client.models.generate_content(
+            # Generate content with tools using recommended Chat AFC pattern
+            chat = self.client.chats.create(
                 model=config.default_model,
-                contents=prompt,
                 config=gen_config,
             )
+            response = chat.send_message(prompt)
 
             if response.text:
                 return response.text
