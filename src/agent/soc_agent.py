@@ -47,10 +47,20 @@ Rules:
         self._init_client()
 
     def _init_client(self):
-        if config.gemini_api_key:
+        if config.gemini_api_key or config.enterprise_mode:
             try:
                 from google import genai
-                self.client = genai.Client(api_key=config.gemini_api_key)
+                if config.enterprise_mode:
+                    self.client = genai.Client(
+                        vertexai=True,
+                        project=config.gcp_project,
+                        location=config.gcp_location
+                    )
+                else:
+                    self.client = genai.Client(
+                        api_key=config.gemini_api_key,
+                        vertexai=False
+                    )
             except Exception as e:
                 log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
 
@@ -161,7 +171,7 @@ Rules:
 
             if response.text:
                 return response.text
-            return "Investigation reasoning processed by Gemini 2.5."
+            return f"Investigation reasoning processed by {config.default_model}."
         except Exception as e:
             print(f"\n[!] WARNING: Gemini API Call failed ({type(e).__name__}: {str(e)}). Falling back to local engine.")
             log_audit_event("AGENT_REASONING", "GEMINI_CALL_FAILED", "FALLBACK_TRIGGERED", trace_id=trace_id, details={"error": str(e)}, severity=30)
