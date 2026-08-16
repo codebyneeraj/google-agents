@@ -48,7 +48,7 @@ flowchart TD
 
 | GEAP / GCP Component | Implementation in This Project | Purpose |
 | :--- | :--- | :--- |
-| **Gemini API** | `gemini-2.5-flash` / `gemini-1.5-flash` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
+| **Gemini / Gemma API** | `gemma-4-31b-it` / `gemini-2.5-flash` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
 | **Google ADK & GenAI SDK** | `google-genai` Python SDK | Official agent framework for managing tools, callbacks, and orchestration. |
 | **Agent Registry** | `agent-card.json` & `/api/v1/agent/registry` | Central fleet catalog for capability discovery and IAM contract verification. |
 | **Agent Runtime** | Google Cloud Run (`Dockerfile`, `cloudbuild.yaml`) | Serverless, scalable container execution runtime. |

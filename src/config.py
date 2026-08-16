@@ -12,7 +12,7 @@ class AppConfig(BaseModel):
     
     # Gemini / GEAP Settings
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", "")))
-    default_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    default_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemma-4-31b-it"))
     enterprise_mode: bool = Field(default_factory=lambda: os.getenv("GOOGLE_GENAI_USE_ENTERPRISE", "false").lower() == "true")
     
     # GCP Infrastructure & Identity
