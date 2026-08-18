@@ -1,13 +1,13 @@
 steps:
-  # Build the container image
+  # 1. Build container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/soc-orchestrator', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/soc-orchestrator:latest', '.']
   
-  # Push the container image to Container Registry
+  # 2. Push container image to Google Container Registry / Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/soc-orchestrator']
+    args: ['push', 'gcr.io/$PROJECT_ID/soc-orchestrator:latest']
   
-  # Deploy container image to Cloud Run (Agent Runtime)
+  # 3. Deploy container to Google Cloud Run (Serverless Agent Runtime)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -15,13 +15,23 @@ steps:
       - 'deploy'
       - 'soc-orchestrator'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/soc-orchestrator'
+      - 'gcr.io/$PROJECT_ID/soc-orchestrator:latest'
       - '--region'
       - 'us-central1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '2'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
       - '--set-env-vars'
-      - 'GOOGLE_GENAI_USE_ENTERPRISE=TRUE,GOOGLE_CLOUD_LOCATION=us-central1'
+      - 'GOOGLE_GENAI_USE_ENTERPRISE=true,GOOGLE_CLOUD_LOCATION=us-central1,GEMINI_MODEL=gemini-3.6-flash,SECONDARY_MODEL=gemma-4-31b-it,ENABLE_MODEL_ARMOR=true,APP_ENV=production'
+
 images:
-  - 'gcr.io/$PROJECT_ID/soc-orchestrator'
+  - 'gcr.io/$PROJECT_ID/soc-orchestrator:latest'
+

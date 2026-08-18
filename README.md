@@ -48,7 +48,7 @@ flowchart TD
 
 | GEAP / GCP Component | Implementation in This Project | Purpose |
 | :--- | :--- | :--- |
-| **Gemini / Gemma API** | `gemma-4-31b-it` / `gemini-2.5-flash` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
+| **Gemini / Gemma API** | `gemini-3-flash` / `gemma-4-31b-it` | Core reasoning engine for analyzing security alerts & synthesizing reports. |
 | **Google ADK & GenAI SDK** | `google-genai` Python SDK | Official agent framework for managing tools, callbacks, and orchestration. |
 | **Agent Registry** | `agent-card.json` & `/api/v1/agent/registry` | Central fleet catalog for capability discovery and IAM contract verification. |
 | **Agent Runtime** | Google Cloud Run (`Dockerfile`, `cloudbuild.yaml`) | Serverless, scalable container execution runtime. |
@@ -77,69 +77,54 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-### 3. Run Automated Tests
+### 3. Launch the FastAPI SOC Agent Gateway
+```bash
+uvicorn src.gateway.server:app --reload --port 8080
+```
+- **API Documentation (Swagger UI):** `http://localhost:8080/docs`
+- **Health Check:** `http://localhost:8080/healthz`
+- **GEAP Agent Registry:** `http://localhost:8080/api/v1/agent/registry`
+- **Fleet Discovery:** `http://localhost:8080/api/v1/agent/registry/fleet`
+
+### 4. Run Automated Unit Tests (21/21 Passing)
 ```bash
 pytest -v
 ```
 
-### 4. Run Cloud Validation Suite
+### 5. Run Red-Team Evaluation Battery
 ```bash
-python validate_cloud.py
+python scripts/advanced_soc_evaluation.py --url http://localhost:8080
 ```
 
-### 5. Run the Hackathon Pitch Demonstration
-```bash
-python demo.py
-```
 
-### 6. Launch the Interactive SOC Analyst CLI
-```bash
-python main.py
-```
-
-### 7. Launch the FastAPI Agent Gateway
-```bash
-uvicorn src.gateway.server:app --reload --port 8080
-```
-- API Docs: `http://localhost:8080/docs`
-- Registry Discovery: `http://localhost:8080/api/v1/agent/registry`
-- Fleet Listing: `http://localhost:8080/api/v1/agent/registry/fleet`
-- Health Check: `http://localhost:8080/healthz`
 
 ---
 
-## 🛡️ Live Linux VM Security Lab (Windows Attacker -> Linux Defender)
+## 🎯 Try It Live
 
-Test real intrusion detection and automated firewall containment using a Linux VM (Ubuntu / Debian / RHEL):
+### Web Dashboard (Recommended)
+Open the **SOC Command Center** at your deployed Cloud Run URL (or locally at `http://localhost:8080`) and interact with the agent directly:
 
-### Step 1: Install on Linux Virtual Machine
-On your Linux VM, clone this repository and run the automated installer:
+1. **Trigger Simulated SIEM Alerts**: Click any scenario in the **Threat Simulation Console** (C2 Beaconing, SSH Brute Force, IAM Compromise, or Adversarial Jailbreak). The SOC agent will autonomously triage, invoke threat tools, and execute containment.
+2. **Interactive SOC Analyst Chat**: Type natural-language queries like `Investigate 198.51.100.45` or `Check if alice.smith@enterprise.corp is compromised`. Watch the agent reason in real-time with MITRE ATT&CK mapping and tool execution chips.
+3. **Test Model Armor Guardrails**: Click "Test Adversarial Jailbreak" to verify that prompt injection attacks are intercepted before reaching the LLM.
+4. **Observe Cross-Session Memory**: Start a new session and ask about a previously investigated indicator. The Vertex AI Memory Bank recalls prior context automatically.
+
+### API Endpoints (Swagger UI)
+Open `{your_url}/docs` for the full interactive Swagger documentation. Key endpoints:
+- `POST /api/v1/webhook/alert` — Ingest a SIEM/EDR alert for autonomous triage
+- `POST /api/v1/agent/query` — Ask the SOC analyst agent a question
+- `GET /api/v1/agent/registry` — GEAP Agent Registry discovery card
+- `GET /healthz` — Service health check
+
+### Automated Test Suite
 ```bash
-chmod +x install_vm.sh
-./install_vm.sh
+# Run unit tests
+pytest -v
+
+# Run advanced red-team evaluation against a live deployment
+python scripts/advanced_soc_evaluation.py --url https://YOUR_CLOUD_RUN_URL
 ```
-
-### Step 2: Start the Defender Services on Linux VM
-```bash
-# Terminal 1: Start Agent Gateway
-source .venv/bin/activate
-python main.py --gateway
-
-# Terminal 2: Start the Live Auth Log Sensor Daemon
-source .venv/bin/activate
-sudo python scripts/sensor_daemon.py
-```
-
-### Step 3: Run the Attack Simulation from Windows Host
-From your Windows host machine, launch simulated SSH brute force against the Linux VM:
-```powershell
-# Python
-python scripts/attack_simulation.py --target-ip <LINUX_VM_IP>
-
-# Or native PowerShell:
-.\scripts\attack_simulation.ps1 -TargetIp <LINUX_VM_IP>
-```
-The sensor daemon detects the failed login attempts in `/var/log/auth.log`, alerts the SOC Agent, and the agent automatically executes `ufw`/`iptables` firewall rules to block your Windows IP.
 
 ---
 

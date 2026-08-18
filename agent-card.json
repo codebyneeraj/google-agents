@@ -1,7 +1,7 @@
 {
   "name": "Secure SOC Analyst Orchestrator",
   "description": "An autonomous, event-driven AI agent that monitors enterprise SIEM alerts, investigates suspicious activity using threat intelligence, and generates sanitized incident reports using GEAP Memory Bank.",
-  "url": "https://soc-orchestrator-enterprise-fleet-uc.a.run.app/api/v1/agent",
+  "url": "https://soc-orchestrator-848181707260.us-central1.run.app/api/v1/agent",
   "version": "1.0.0",
   "provider": {
     "organization": "Enterprise Security Operations",

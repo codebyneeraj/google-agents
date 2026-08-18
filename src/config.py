@@ -10,13 +10,14 @@ class AppConfig(BaseModel):
     app_version: str = "1.0.0"
     environment: str = Field(default_factory=lambda: os.getenv("APP_ENV", "development"))
     
-    # Gemini / GEAP Settings
+    # Gemini & Gemma Reasoning Models
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", "")))
-    default_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemma-4-31b-it"))
-    enterprise_mode: bool = Field(default_factory=lambda: os.getenv("GOOGLE_GENAI_USE_ENTERPRISE", "false").lower() == "true")
+    default_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
+    secondary_model: str = Field(default_factory=lambda: os.getenv("SECONDARY_MODEL", "gemma-4-31b-it"))
+    enterprise_mode: bool = Field(default_factory=lambda: os.getenv("GOOGLE_GENAI_USE_ENTERPRISE", "true").lower() == "true")
     
     # GCP Infrastructure & Identity
-    gcp_project: str = Field(default_factory=lambda: os.getenv("GOOGLE_CLOUD_PROJECT", "mock-enterprise-soc-project"))
+    gcp_project: str = Field(default_factory=lambda: os.getenv("GOOGLE_CLOUD_PROJECT", "primeval-melody-505912-n7"))
     gcp_location: str = Field(default_factory=lambda: os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"))
     google_application_credentials: str = Field(default_factory=lambda: os.getenv("GOOGLE_APPLICATION_CREDENTIALS", ""))
     

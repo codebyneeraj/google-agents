@@ -18,6 +18,12 @@ app = FastAPI(
     description="Enterprise Agent Gateway for Autonomous SOC Incident Triaging and Threat Response (GEAP Fleet)",
 )
 
+@app.get("/")
+async def root():
+    return {"service": config.app_name, "version": config.app_version, "docs": "/docs"}
+
+
+
 # Sliding Window Rate Limiter (Enterprise Security Requirement)
 RATE_LIMIT_WINDOW_SECONDS = 60
 MAX_REQUESTS_PER_WINDOW = 120
@@ -61,6 +67,7 @@ class AnalystQuery(BaseModel):
     session_id: Optional[str] = None
     user_id: Optional[str] = None
 
+@app.get("/health")
 @app.get("/healthz")
 async def health_check():
     return {
@@ -95,6 +102,7 @@ async def get_session_details(session_id: str):
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     return session.model_dump()
 
+@app.post("/api/v1/agent/triage", response_model=InvestigationResult)
 @app.post("/api/v1/webhook/alert", response_model=InvestigationResult)
 async def handle_siem_alert(payload: AlertPayload):
     """Webhook entry point for incoming security alerts."""

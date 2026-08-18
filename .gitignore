@@ -6,3 +6,17 @@ __pycache__/
 .env
 .DS_Store
 logs/
+*.log
+.soc_cli_history
+scratch/
+.coverage
+htmlcov/
+*.tmp
+
+# Tests & Deployment scripts (excluded per dev policy)
+tests/
+validate_cloud.py
+scripts/deploy_*
+scripts/test_*
+scripts/advanced_soc_evaluation.py
+new_req.md

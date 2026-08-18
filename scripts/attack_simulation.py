@@ -11,6 +11,13 @@ import socket
 import argparse
 from datetime import datetime
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 USERNAMES = ["root", "admin", "ubuntu", "devops", "testuser", "backup", "oracle", "database"]
 PASSWORDS = ["123456", "password", "admin123", "toor", "root123", "welcome", "letmein", "secret"]
 

@@ -2,15 +2,12 @@
 
 help:
 	@echo "Available commands:"
-	@echo "  make run        - Run interactive SOC Analyst CLI"
+	@echo "  make gateway    - Start FastAPI Gateway Server"
 	@echo "  make demo       - Run 6-step Hackathon Showcase Demo"
 	@echo "  make test       - Run pytest test suite"
 	@echo "  make validate   - Run Cloud Validation Suite"
-	@echo "  make gateway    - Start FastAPI Gateway Server"
 	@echo "  make deploy     - Deploy to Google Cloud Run via Cloud Build"
 
-run:
-	python main.py
 
 demo:
 	python demo.py

@@ -71,6 +71,17 @@ HOST_INVENTORY = {
     "WKSTN-JDOE-04": {"ip": "10.0.12.92", "status": "ONLINE", "os": "Windows 11 Enterprise", "criticality": "MEDIUM"},
 }
 
+# Quarantined Hosts & Blocked IPs Ledger
+QUARANTINED_TARGETS: Dict[str, Dict[str, Any]] = {}
+
+def get_quarantined_targets() -> Dict[str, Dict[str, Any]]:
+    return dict(QUARANTINED_TARGETS)
+
+def clear_quarantined_targets():
+    QUARANTINED_TARGETS.clear()
+    for h in HOST_INVENTORY.values():
+        h["status"] = "ONLINE"
+
 import os
 import re
 import subprocess
@@ -79,6 +90,7 @@ from src.config import config
 
 # Tool Execution Ledger
 ACTIVE_TOOL_EXECUTIONS: List[Dict[str, Any]] = []
+
 
 def get_and_clear_tool_executions() -> List[Dict[str, Any]]:
     global ACTIVE_TOOL_EXECUTIONS
@@ -273,6 +285,32 @@ def lookup_user_activity(user_identifier: str, trace_id: str = None) -> Dict[str
     )
     return res
 
+def _execute_native_windows_block(target: str) -> Dict[str, Any]:
+    """Applies real firewall drop rule on Windows using netsh advfirewall / PowerShell."""
+    firewall_action = "NONE"
+    output = ""
+    success = False
+    
+    is_ip = bool(re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", target))
+    if not is_ip:
+        return {"firewall_engine": "WINDOWS_FIREWALL_SKIPPED", "success": False, "system_output": "Target is not a valid IPv4 address"}
+
+    try:
+        # Inbound block
+        cmd_in = ["netsh", "advfirewall", "firewall", "add", "rule", f"name=SOC-Block-{target}-in", "dir=in", "action=block", f"remoteip={target}"]
+        proc_in = subprocess.run(cmd_in, capture_output=True, text=True, timeout=5)
+        # Outbound block
+        cmd_out = ["netsh", "advfirewall", "firewall", "add", "rule", f"name=SOC-Block-{target}-out", "dir=out", "action=block", f"remoteip={target}"]
+        proc_out = subprocess.run(cmd_out, capture_output=True, text=True, timeout=5)
+        
+        output = (proc_in.stdout + proc_in.stderr + proc_out.stdout + proc_out.stderr).strip()
+        success = (proc_in.returncode == 0)
+        firewall_action = "NETSH_FIREWALL_BLOCK_APPLIED" if success else "NETSH_FAILED"
+    except Exception as e:
+        output = f"Windows Firewall execution error: {str(e)}"
+        
+    return {"firewall_engine": firewall_action, "success": success, "system_output": output}
+
 def _execute_native_linux_block(target: str) -> Dict[str, Any]:
     """Applies real firewall drop rule on Linux using direct iptables and ufw."""
     firewall_action = "NONE"
@@ -316,8 +354,11 @@ def isolate_host(host_id: str, reason: str, trace_id: str = None) -> Dict[str, A
     is_ip = bool(re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", clean_host))
     
     firewall_result = None
-    if config.enable_live_firewall or (os.name != "nt" and is_ip):
-        firewall_result = _execute_native_linux_block(clean_host)
+    if is_ip:
+        if os.name == "nt":
+            firewall_result = _execute_native_windows_block(clean_host)
+        else:
+            firewall_result = _execute_native_linux_block(clean_host)
 
     if clean_host_upper in HOST_INVENTORY:
         HOST_INVENTORY[clean_host_upper]["status"] = "ISOLATED"
@@ -348,7 +389,9 @@ def isolate_host(host_id: str, reason: str, trace_id: str = None) -> Dict[str, A
             "live_firewall": firewall_result,
         }
 
+    QUARANTINED_TARGETS[clean_host] = res
     ACTIVE_TOOL_EXECUTIONS.append({"tool": "isolate_host", "input": clean_host, "result": res})
+
     log_audit_event(
         event_type="DEFENSIVE_ACTION",
         action="ISOLATE_HOST",
@@ -357,4 +400,5 @@ def isolate_host(host_id: str, reason: str, trace_id: str = None) -> Dict[str, A
         details={"host_id": host_id, "reason": reason, "live_firewall": firewall_result},
     )
     return res
+
 
