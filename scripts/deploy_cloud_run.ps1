@@ -7,7 +7,8 @@
 $PROJECT_ID = "primeval-melody-505912-n7"
 $REGION = "us-central1"
 $SERVICE_NAME = "soc-orchestrator"
-$IMAGE_NAME = "gcr.io/$PROJECT_ID/$SERVICE_NAME"
+$IMAGE_NAME = "$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE_NAME"
+
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host "Deploying Secure SOC Orchestrator to Google Cloud Run" -ForegroundColor Green

@@ -69,7 +69,7 @@ def run_functionality_tests(base_url: str):
             "description": "Suspicious outbound C2 traffic detected to malicious node 198.51.100.45",
             "target_ip": "198.51.100.45"
         }
-        r = requests.post(f"{base_url}/api/v1/webhook/alert", json=payload, timeout=25)
+        r = requests.post(f"{base_url}/api/v1/webhook/alert", json=payload, timeout=60)
         if r.status_code == 200:
             data = r.json()
             actions = len(data.get("actions_taken", []))

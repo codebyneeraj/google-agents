@@ -33,7 +33,7 @@ class RemoteClient:
     def __init__(self, base_url: str, auto_approve: bool = False):
         self.base_url = base_url.rstrip("/")
         self.auto_approve = auto_approve
-        self.client = httpx.Client(timeout=35.0)
+        self.client = httpx.Client(timeout=90.0)
 
     def stream_query(self, query: str, session_id: Optional[str] = None, trace_id: Optional[str] = None) -> Generator[Dict[str, Any], None, None]:
         tid = trace_id or str(uuid.uuid4())

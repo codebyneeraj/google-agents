@@ -11,7 +11,7 @@ import tomlkit
 DEFAULT_CONFIG = {
     "core": {
         "mode": "local",  # 'local' or 'remote'
-        "remote_url": "http://localhost:8080",
+        "remote_url": "https://soc-orchestrator-848181707260.us-central1.run.app",
         "default_model": "gemini-3.6-flash",
     },
     "security": {
