@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+*.egg-info/
+build/
+dist/
 .env
 .DS_Store
 logs/
@@ -13,10 +16,3 @@ scratch/
 htmlcov/
 *.tmp
 
-# Tests & Deployment scripts (excluded per dev policy)
-tests/
-validate_cloud.py
-scripts/deploy_*
-scripts/test_*
-scripts/advanced_soc_evaluation.py
-new_req.md

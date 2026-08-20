@@ -10,7 +10,14 @@ from src.tools.soc_tools import (
     check_threat_intel,
     lookup_user_activity,
     isolate_host,
+    unquarantine_host,
     inspect_linux_auth_logs,
+    list_quarantined_hosts,
+    scan_domain_dns,
+    analyze_file_hash,
+    decode_base64_payload,
+    scan_local_ports,
+    generate_mitre_report,
     get_and_clear_tool_executions,
 )
 from src.observability.logger import log_audit_event
@@ -39,7 +46,7 @@ Core Analytical & Defense Workflow:
 3. USER CORRELATION: Correlate user anomalies or targeted accounts using lookup_user_activity when usernames or email accounts are present.
 4. ACTIVE CONTAINMENT: Whenever raw telemetry shows an IP probing multiple ports (reconnaissance/port scan), attempting brute force, or targeting honeypots, you MUST execute `isolate_host(host_id=<source_ip_or_compromised_host>, reason="Active multi-port intrusion attempt / honeypot probe detected")` to block the attacker in the firewall immediately.
 5. MITRE ATT&CK & STRUCTURED FINDINGS: Always reference specific MITRE ATT&CK tactics and techniques in your structured summary.
-6. PLAIN-ENGLISH SUMMARY (ACCESSIBLE TO ALL): Always provide a clear 2-3 sentence 'Plain-English Explanation' so non-technical stakeholders immediately understand what happened, what danger existed, and how the agent protected the system.
+6. EXECUTIVE SUMMARY: Provide a concise executive summary synthesizing the incident context, risk level, and containment actions taken.
 7. ZERO TRUST & OPERATIONAL SECURITY: Never disclose raw secrets or bypass verification policies."""
 
 
@@ -50,34 +57,35 @@ Core Analytical & Defense Workflow:
         self._init_client()
 
     def _init_client(self):
-        if config.gemini_api_key or config.enterprise_mode:
-            try:
-                from google import genai
-                if config.enterprise_mode:
-                    self.client = genai.Client(
-                        vertexai=True,
-                        project=config.gcp_project,
-                        location=config.gcp_location
-                    )
-                else:
-                    self.client = genai.Client(
-                        api_key=config.gemini_api_key,
-                        vertexai=False
-                    )
-            except Exception as e:
-                log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
+        try:
+            from google import genai
+            if config.gemini_api_key:
+                self.client = genai.Client(
+                    api_key=config.gemini_api_key,
+                    vertexai=False
+                )
+            elif config.enterprise_mode:
+                self.client = genai.Client(
+                    vertexai=True,
+                    project=config.gcp_project,
+                    location=config.gcp_location
+                )
+        except Exception as e:
+            log_audit_event("AGENT_INIT", "GENAI_CLIENT_INIT", "FAILED", details={"error": str(e)}, severity=30)
 
-    def process_alert_or_query(self, input_text: str, session_id: Optional[str] = None, trace_id: Optional[str] = None) -> InvestigationResult:
-        """Main agent execution loop: Ingestion -> Guardrails -> Memory Recall -> Reasoning/Tools -> Memory Store -> Outbound Sanitization."""
+    def stream_alert_or_query(self, input_text: str, session_id: Optional[str] = None, trace_id: Optional[str] = None):
+        """Streaming generator yielding structured event dictionaries throughout the investigation pipeline."""
         tid = trace_id or str(uuid.uuid4())
         sid = session_id or f"sess_{uuid.uuid4().hex[:8]}"
 
+        yield {"type": "start", "trace_id": tid, "session_id": sid, "input": input_text}
         log_audit_event("AGENT_PIPELINE", "START_INVESTIGATION", "IN_PROGRESS", trace_id=tid, details={"session_id": sid})
 
         # 1. Inbound Model Armor Guardrail
         is_safe, sanitized_input, threats = model_armor.inspect_inbound(input_text, trace_id=tid)
         if not is_safe:
-            return InvestigationResult(
+            yield {"type": "inbound_guardrail", "status": "BLOCKED", "threats": threats}
+            res = InvestigationResult(
                 trace_id=tid,
                 session_id=sid,
                 status="BLOCKED_BY_GUARDRAIL",
@@ -85,20 +93,29 @@ Core Analytical & Defense Workflow:
                 findings=[f"Threat signature match: {p}" for p in threats],
                 raw_response="REQUEST_TERMINATED: Security violation detected by Model Armor Gateway."
             )
+            yield {"type": "final", "result": res}
+            return
+
+        yield {"type": "inbound_guardrail", "status": "SAFE", "threats": []}
 
         # 2. Context Retrieval from Memory Bank
         recalled_memories = memory_bank.recall_memories(sanitized_input, limit=3, trace_id=tid)
         memory_context = ""
         if recalled_memories:
+            yield {
+                "type": "memory_recall",
+                "memories": [{"created_at": m.created_at, "entity_key": m.entity_key, "summary": m.summary} for m in recalled_memories]
+            }
             memory_context = "\n--- RECALLED ENTERPRISE MEMORY ---\n" + "\n".join(
                 [f"[{m.created_at}] Entity: {m.entity_key} -> {m.summary}" for m in recalled_memories]
             ) + "\n----------------------------------\n"
+        else:
+            yield {"type": "memory_recall", "memories": []}
 
         # 3. Autonomous Execution & Tool Invocation with Session History
         findings = []
         mitre_tactics = []
 
-        # Retrieve prior turns from this active session for conversational continuity
         session_obj = session_service.get_session(sid, trace_id=tid)
         history_contents = []
         if session_obj and session_obj.messages:
@@ -110,19 +127,25 @@ Core Analytical & Defense Workflow:
             except Exception:
                 pass
 
+        yield {"type": "reasoning_start", "model": config.default_model}
         if self.client:
             raw_output = self._execute_gemini(sanitized_input, memory_context, history_contents, tid, session_obj)
         else:
             raw_output = self._execute_deterministic_soc_workflow(sanitized_input, memory_context, [], findings, mitre_tactics, tid, session_obj)
 
-        # Retrieve any tool executions performed during reasoning
         actions_taken = get_and_clear_tool_executions()
+        for act in actions_taken:
+            yield {
+                "type": "tool_call",
+                "tool": act.get("tool"),
+                "input": act.get("input"),
+                "result": act.get("result")
+            }
 
         # 4. State Persistence in Memory Bank & Cloud Session
         session_service.append_message(sid, role="user", content=sanitized_input, trace_id=tid)
         
         stored_entry = None
-        # Extract primary entity for memory storage
         for word in sanitized_input.split():
             clean_word = word.strip(" ,;:\"'()[]{}")
             if any(char.isdigit() for char in clean_word) and ("." in clean_word or "@" in clean_word):
@@ -133,13 +156,15 @@ Core Analytical & Defense Workflow:
                     metadata={"session_id": sid, "trace_id": tid, "actions": len(actions_taken)},
                     trace_id=tid
                 )
+                yield {"type": "memory_stored", "entity": clean_word, "summary": summary_snippet}
                 break
 
         # 5. Outbound Model Armor Sanitization
         sanitized_output, redactions = model_armor.sanitize_outbound(raw_output, trace_id=tid)
         session_service.append_message(sid, role="assistant", content=sanitized_output, trace_id=tid)
+        if redactions:
+            yield {"type": "outbound_redaction", "redactions": redactions}
 
-        # Trigger auto-generate memory callback
         memory_bank.generate_memories_callback({"text": sanitized_input + " " + sanitized_output, "session_id": sid}, trace_id=tid)
 
         log_audit_event(
@@ -150,7 +175,7 @@ Core Analytical & Defense Workflow:
             details={"actions_count": len(actions_taken), "redactions_applied": redactions},
         )
 
-        return InvestigationResult(
+        final_res = InvestigationResult(
             trace_id=tid,
             session_id=sid,
             status="RESOLVED",
@@ -162,13 +187,34 @@ Core Analytical & Defense Workflow:
             redaction_applied=redactions,
             raw_response=sanitized_output,
         )
+        yield {"type": "final", "result": final_res}
+
+    def process_alert_or_query(self, input_text: str, session_id: Optional[str] = None, trace_id: Optional[str] = None) -> InvestigationResult:
+        """Main agent execution loop returning final InvestigationResult."""
+        final_result = None
+        for event in self.stream_alert_or_query(input_text, session_id=session_id, trace_id=trace_id):
+            if event.get("type") == "final":
+                final_result = event.get("result")
+        return final_result
 
     def _execute_gemini(self, prompt: str, memory_context: str, history: List[Any], trace_id: str, session_obj: Any = None) -> str:
         """Executes reasoning loop with Gemini API Client with native function calling & multi-turn history."""
         from google.genai import types
 
         system_instruction = f"{self.SYSTEM_PROMPT}\n{memory_context}" if memory_context else self.SYSTEM_PROMPT
-        tools = [check_threat_intel, lookup_user_activity, isolate_host, inspect_linux_auth_logs]
+        tools = [
+            check_threat_intel,
+            lookup_user_activity,
+            isolate_host,
+            unquarantine_host,
+            inspect_linux_auth_logs,
+            list_quarantined_hosts,
+            scan_domain_dns,
+            analyze_file_hash,
+            decode_base64_payload,
+            scan_local_ports,
+            generate_mitre_report,
+        ]
         gen_config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=tools,
@@ -236,6 +282,17 @@ Core Analytical & Defense Workflow:
                 "- **Review security memory:** *'Show what you remember from previous incidents'*\n"
                 "- **Run security tests:** *'Run all verification tests'*"
             )
+
+        # Check for listing isolated / blocked hosts query
+        if any(kw in lower_prompt for kw in ("isolated", "blocked ip", "quarantined", "quarantine list", "active blocks", "blocked host")):
+            q_res = list_quarantined_hosts(trace_id=trace_id)
+            actions_taken.append({"tool": "list_quarantined_hosts", "input": "ALL", "result": q_res})
+            if q_res.get("targets"):
+                findings.append(f"Active Isolation Roster: {len(q_res['targets'])} targets currently quarantined ({', '.join(q_res['targets'])}).")
+                return f"### Active Enterprise Quarantine Status:\n\nCurrently quarantined assets/blocked IPs ({len(q_res['targets'])} total):\n" + "\n".join([f"- **`{t}`** | Action: `{q_res['details'].get(t, {}).get('action', 'ISOLATED')}` | Status: `{q_res['details'].get(t, {}).get('status', 'SUCCESS')}`" for t in q_res["targets"]])
+            else:
+                findings.append("No assets or IP addresses are currently quarantined.")
+                return "### Active Enterprise Quarantine Status:\n\nThere are currently **0 quarantined hosts or blocked IP addresses** in the active defense ledger."
 
         # Extract indicators
         words = prompt.replace(",", " ").replace(";", " ").split()
@@ -383,7 +440,7 @@ Core Analytical & Defense Workflow:
             lines.append(memory_context.strip())
             lines.append("")
 
-        lines.append("### Plain-English Summary:")
+        lines.append("### Executive Summary:")
         if any("MALICIOUS" in str(a) for a in actions_taken):
             lines.append("A known cyber-attack server was caught communicating with an enterprise computer. The agent detected the intrusion, verified the attacker's reputation, and immediately locked down the computer to prevent data theft.")
         elif any("inspect_linux_auth_logs" in str(a) for a in actions_taken):
