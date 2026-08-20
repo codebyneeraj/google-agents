@@ -14,11 +14,11 @@ class ModelArmor:
 
     # Inbound Injection & Jailbreak Heuristics
     INJECTION_PATTERNS = [
-        r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
-        r"(?i)disregard\s+(all\s+)?(previous|prior|above)\s+instructions",
-        r"(?i)system\s+prompt\s+override",
+        r"(?i)ignore\s+(all\s+)?(previous|prior|above|existing|security)\s+(instructions|rules|policies|guidelines|system)",
+        r"(?i)disregard\s+(all\s+)?(previous|prior|above|existing|security)\s+(instructions|rules|policies|guidelines)",
+        r"(?i)system\s+(prompt|instruction)\s+override",
         r"(?i)output\s+(your\s+)?(system\s+prompt|initial\s+prompt|secret\s+instructions)",
-        r"(?i)you\s+are\s+now\s+in\s+developer\s+mode",
+        r"(?i)you\s+are\s+now\s+in\s+(developer\s+mode|god\s+mode|unrestricted)",
         r"(?i)dan\s+mode|jailbreak|unfiltered\s+mode",
         r"(?i)bypass\s+(safety|security|policy)\s+guidelines",
         r"(?i)drop\s+table\b|;\s*delete\s+from\b|union\s+select",

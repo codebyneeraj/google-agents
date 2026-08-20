@@ -123,8 +123,9 @@ class InMemoryMemoryService(BaseMemoryService):
         )
         return list(sorted_results)
 
-    def get_all_memories_for_cli(self, user_id: Optional[str] = None) -> List[MemoryEntry]:
-        """Fetches all memories scoped to the user/analyst for display in the CLI."""
+    def get_all_memories(self, user_id: Optional[str] = None) -> List[MemoryEntry]:
+        """Fetches all memories scoped to the user/analyst."""
+
         uid = user_id or config.default_user_id
         all_entries = []
         for entries in self._store.values():
@@ -169,6 +170,7 @@ class VertexAiMemoryBankService(BaseMemoryService):
         
         # Managed GEAP ADK Memory Service Integration
         try:
+            # pyrefly: ignore [missing-import]
             from google.adk.memory import VertexAiMemoryBankService as ADKMemoryService
             self.cloud_client = ADKMemoryService(project=self.project_id, location=self.location)
             self.is_cloud_connected = True
